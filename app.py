@@ -1,41 +1,53 @@
-
-from flask import Flask, render_template, request, send_file
+from flask import Flask, request, send_file
 from PIL import Image, ImageDraw, ImageFont
+import io
 import barcode
 from barcode.writer import ImageWriter
-import os
 
 app = Flask(__name__)
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+@app.route('/gerar-cartao', methods=['POST'])
+def gerar_cartao():
+    data = request.json
+    nome = data.get("nome", "")
+    nascimento = data.get("nascimento", "")
+    sexo = data.get("sexo", "")
+    cns = data.get("cns", "")
 
-@app.route("/gerar", methods=["POST"])
-def gerar():
-    nome = request.form["nome"]
-    nascimento = request.form["nascimento"]
-    sexo = request.form["sexo"]
-    cns = request.form["cns"]
+    # Criação da imagem base
+    img = Image.new("RGB", (800, 400), "white")
+    draw = ImageDraw.Draw(img)
 
-    base = Image.open("app/static/cartao_sus_base.png").convert("RGB")
-    draw = ImageDraw.Draw(base)
+    # Carregando fontes
+    fonte_regular = ImageFont.truetype("Roboto-Regular.ttf", size=28)
+    fonte_bold = ImageFont.truetype("Roboto-Bold.ttf", size=32)
+    fonte_cns = ImageFont.truetype("Roboto-Bold.ttf", size=48)
 
-    font = ImageFont.truetype("arial.ttf", 16)
-    big_font = ImageFont.truetype("arial.ttf", 18)
+    # Escrevendo nome
+    draw.text((50, 50), nome, font=fonte_bold, fill="black")
 
-    draw.text((160, 160), nome, font=font, fill="black")
-    draw.text((160, 190), f"Data de Nasc.: {nascimento}    Sexo: {sexo}", font=font, fill="black")
-    draw.text((160, 220), cns, font=big_font, fill="black")
+    # Nascimento e Sexo na mesma linha
+    draw.text((50, 100), f"Data de Nasc.: {nascimento}   Sexo: {sexo}", font=fonte_regular, fill="black")
 
-    # Gerar código de barras do CNS
-    code128 = barcode.get('code128', cns, writer=ImageWriter())
-    barcode_path = "app/static/codigo.png"
-    code128.save(barcode_path[:-4])
+    # CNS com fonte maior
+    draw.text((50, 160), cns, font=fonte_cns, fill="black")
 
-    codigo = Image.open(barcode_path).resize((300, 80))
-    base.paste(codigo, (160, 250))
+    # Gerando código de barras
+    codigo = barcode.get("code128", cns, writer=ImageWriter())
+    buffer = io.BytesIO()
+    codigo.write(buffer, {"module_height": 10.0, "font_size": 12})
+    buffer.seek(0)
+    codigo_img = Image.open(buffer)
 
-    output_path = "app/static/cartao_gerado.png"
-    base.save(output_path)
-    return send_file(output_path, mimetype="image/png")
+    # Colando código de barras na imagem
+    img.paste(codigo_img, (50, 240))
+
+    # Retornar como arquivo
+    final_buffer = io.BytesIO()
+    img.save(final_buffer, format="PNG")
+    final_buffer.seek(0)
+
+    return send_file(final_buffer, mimetype="image/png", as_attachment=True, download_name="cartao_cns.png")
+
+if __name__ == "__main__":
+    app.run(debug=True)
