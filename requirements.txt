@@ -1,3 +1,5 @@
-flask
-pillow
+Flask
+Pillow
 python-barcode
+reportlab
+gunicorn
